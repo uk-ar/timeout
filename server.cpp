@@ -7,19 +7,37 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <strings.h>
+#include <errno.h>
 
 void simple_server(int new_sockfd) {
   char buf[100];
   int buf_len;
-  while((buf_len = read(new_sockfd, buf, 100)) > 0) {
-    write(1, buf, buf_len);//request
-    printf(":request arrived\n");
-    printf("doing hevy work\n");
-    sleep(3);
-    //if((buf_len = read(new_sockfd, buf, 100)))
-    printf("response replied\n");
+  buf_len = read(new_sockfd, buf, 100);
+  //while() {
+  write(1, buf, buf_len);//print request
+  printf(":request arrived\n");
+  printf("doing hevy work\n");
+  sleep(3);
+  int fileflags;
+  if((fileflags = fcntl(new_sockfd, F_GETFL )) == -1){
+    perror("fcntl F_GETFL");
+    exit(1);
   }
-  //close(new_sockfd);  /* ソケットを閉鎖 */
+  if (fcntl(new_sockfd, F_SETFL, fileflags | FNDELAY | FASYNC) == -1){
+    perror("fcntl F_SETFL, FNDELAY | FASYNC");
+    exit(1);
+  }
+  errno = 0;
+  read(new_sockfd, buf, 100);
+  if(errno == EAGAIN){
+    // OK
+    write(new_sockfd, "rep", 3);
+    printf("response replied\n");
+    //}
+  }else{
+    printf("time out\n");
+  }
+  close(new_sockfd);  /* ソケットを閉鎖 */
   return;
 }
 
@@ -60,17 +78,17 @@ int main(int argc,char**argv){
   }
 
   /* コネクト要求を待つ */
-  if ((new_sockfd = accept(sockfd,(struct sockaddr *)&writer_addr, &writer_len)) < 0) {
-    perror("reader: accept");
-    exit(1);
+  while((new_sockfd = accept(sockfd,(struct sockaddr *)&writer_addr, &writer_len)) > 0){
+    simple_server(new_sockfd);
   }
-  simple_server(new_sockfd);
+  perror("reader: accept");
+  exit(1);
 
   close(sockfd);  /* ソケットを閉鎖 */
 }
 /*
 import socket
 client = socket.socket(socket.AF_INET,socket.SOCK_STREAM);client.connect(('127.0.0.1',8000))
-client.sendall("hello")
-client.close()
+client.sendall("hello".encode('utf-8'));client.close()
+client.sendall("hello".encode('utf-8'));
  */
